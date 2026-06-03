@@ -1,25 +1,28 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useBookings } from "../context/BookingContext";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { formatTo12Hour } from "../utils/formatters";
-import {
-  CreditCard,
-  ShieldCheck,
-  ChevronLeft,
-  UserCircle,
-  Phone,
-  Home,
-  CheckCircle,
-  Bus,
-} from "lucide-react";
+import api from "../utils/api";
+import { ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 export default function Payment() {
-  const [paymentMethod, setPaymentMethod] = useState("card");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showSandbox, setShowSandbox] = useState(false);
+  const [sandboxData, setSandboxData] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { addBooking } = useBookings();
@@ -34,9 +37,25 @@ export default function Payment() {
   };
   
   const selectedSeats = location.state?.selectedSeats || ["3C"];
+  const passengerNames = location.state?.passengerNames || {};
+  const passengersArray = Object.entries(passengerNames).map(([seatNumber, name]) => ({ seatNumber, name }));
   const totalPrice = selectedSeats.length * trip.price;
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("Please login to proceed with your booking.", {
+        style: {
+          borderRadius: "10px",
+          background: "#0d1b2a",
+          color: "#fff",
+          fontWeight: "bold",
+        },
+      });
+      navigate("/login", { state: { from: "/payment", trip, selectedSeats, passengerNames } });
+      return;
+    }
+
     toast.success("Step 3: Secure Payment", {
       icon: "💳",
       style: {
@@ -46,212 +65,32 @@ export default function Payment() {
         fontWeight: "bold",
       },
     });
-  }, []);
+  }, [navigate, trip, selectedSeats]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans text-gray-900">
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-gray-900 flex flex-col">
       <Navbar showBack={true} backPath="/select-seat" />
 
-      <main className="max-w-7xl mx-auto px-6 pt-24 pb-12 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
-        {/* Left Column: Payment Options */}
+      <main className="max-w-md mx-auto w-full px-4 sm:px-6 pt-28 pb-16 flex-grow flex flex-col justify-center">
+        {/* Centered Order Summary */}
         <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="space-y-6 sm:space-y-8"
+          className="space-y-6 w-full"
         >
-          <div className="space-y-1 sm:space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-1 h-6 sm:h-8 bg-[#00c9a7] rounded-full"></div>
-              <h2 className="text-xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
-                Payment Details
-              </h2>
-            </div>
-            <p className="text-gray-500 text-[13px] sm:text-[15px] font-medium ml-4">
-              Complete your booking securely using your preferred payment method.
-            </p>
-          </div>
-
-          {/* Payment Method Selector - Modern Glassmorphism Tab Style */}
-          <div className="bg-white/60 backdrop-blur-sm p-1.5 rounded-xl border border-gray-300 flex flex-wrap sm:flex-nowrap gap-2 shadow-sm">
-            {[
-              { id: "card", label: "Card", icon: CreditCard },
-              { id: "upi", label: "UPI", icon: Phone },
-            ].map((method) => (
-              <button
-                key={method.id}
-                onClick={() => setPaymentMethod(method.id)}
-                className={`flex-1 min-w-[80px] flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 rounded-lg transition-all duration-300 ${
-                  paymentMethod === method.id
-                    ? "bg-gray-900 text-white shadow-xl shadow-gray-200 scale-[1.02]"
-                    : "text-gray-500 hover:bg-gray-50"
-                }`}
-              >
-                <method.icon size={16} className={paymentMethod === method.id ? "text-[#00c9a7]" : ""} />
-                <span className="font-bold text-[10px] sm:text-[13px] tracking-wide uppercase">
-                  {method.label}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Form Container */}
-          <div className="relative group">
-            {/* Decorative Background Element */}
-            <div className="absolute -inset-1 bg-gradient-to-r from-[#00c9a7] to-[#00d2ff] rounded-2xl blur opacity-[0.03] group-hover:opacity-[0.06] transition duration-1000"></div>
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-2xl shadow-gray-200/50 border border-gray-100 relative overflow-hidden">
+            {/* Decorative Top Accent */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#00c9a7] to-[#00d2ff]"></div>
             
-            <div className="relative bg-white rounded-2xl p-5 sm:p-8 shadow-xl shadow-gray-100/50 border border-gray-300 overflow-hidden">
-              <AnimatePresence mode="wait">
-                {/* Card Form */}
-                {paymentMethod === "card" && (
-                  <motion.div
-                    key="card"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-8"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-gray-900">Credit or Debit Card</h3>
-                      <div className="flex gap-2">
-                        <div className="px-2 h-6 bg-gray-50 rounded border border-gray-100 flex items-center justify-center">
-                          <span className="text-[8px] font-black italic text-blue-800 tracking-tighter">VISA</span>
-                        </div>
-                        <div className="px-2 h-6 bg-gray-50 rounded border border-gray-100 flex items-center justify-center">
-                          <span className="text-[8px] font-black italic text-orange-600 tracking-tighter">MasterCard</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                      <div className="space-y-2 col-span-full">
-                        <label className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-[0.15em] ml-1">
-                          Cardholder Name
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. DARSHAN KADAM"
-                          className="w-full bg-white border border-gray-200 rounded-xl px-5 sm:px-6 py-3.5 sm:py-4 text-sm font-semibold focus:border-[#00c9a7] focus:ring-4 focus:ring-[#00c9a708] outline-none transition-all duration-300 placeholder:text-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2 col-span-full">
-                        <label className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-[0.15em] ml-1">
-                          Card Number
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            placeholder="0000 0000 0000 0000"
-                            className="w-full bg-white border border-gray-200 rounded-xl px-5 sm:px-6 py-3.5 sm:py-4 text-sm font-mono tracking-widest focus:border-[#00c9a7] focus:ring-4 focus:ring-[#00c9a708] outline-none transition-all duration-300 placeholder:text-gray-300"
-                          />
-                          <CreditCard
-                            size={18}
-                            className="absolute right-5 sm:right-6 top-1/2 -translate-y-1/2 text-gray-300"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-[0.15em] ml-1">
-                          Expiration
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="MM / YY"
-                          className="w-full bg-white border border-gray-200 rounded-xl px-5 sm:px-6 py-3.5 sm:py-4 text-sm font-semibold focus:border-[#00c9a7] focus:ring-4 focus:ring-[#00c9a708] outline-none transition-all duration-300 placeholder:text-gray-300 text-center"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-[0.15em] ml-1">
-                          Security Code
-                        </label>
-                        <input
-                          type="password"
-                          placeholder="CVV"
-                          className="w-full bg-white border border-gray-200 rounded-xl px-5 sm:px-6 py-3.5 sm:py-4 text-sm font-semibold focus:border-[#00c9a7] focus:ring-4 focus:ring-[#00c9a708] outline-none transition-all duration-300 placeholder:text-gray-300 text-center"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-4 bg-gray-50 p-5 rounded-xl border border-gray-300">
-                      <div className="mt-1 bg-white p-1.5 rounded-lg shadow-sm">
-                        <ShieldCheck size={16} className="text-[#00c9a7]" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[13px] font-bold text-gray-800">Bank-level Security</p>
-                        <p className="text-[11px] leading-relaxed text-gray-500 font-medium">
-                          Your payment is secured with 256-bit AES encryption. We do not store your full card details on our servers.
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* UPI Section */}
-                {paymentMethod === "upi" && (
-                  <motion.div
-                    key="upi"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-8 py-4"
-                  >
-                    <div className="text-center space-y-3">
-                      <div className="w-20 h-20 bg-gradient-to-br from-[#00c9a710] to-[#00d2ff10] rounded-2xl flex items-center justify-center mx-auto text-[#00c9a7] rotate-3 hover:rotate-0 transition-transform duration-500 shadow-inner">
-                        <Phone size={36} />
-                      </div>
-                      <h3 className="font-extrabold text-xl text-gray-900">Pay via UPI</h3>
-                      <p className="text-sm text-gray-500 max-w-xs mx-auto font-medium">
-                        Enter your VPA / UPI ID to receive a payment request on your mobile.
-                      </p>
-                    </div>
-
-                    <div className="max-w-md mx-auto space-y-6">
-                      <div className="relative group/input">
-                        <input
-                          type="text"
-                          placeholder="username@bank / mobile-number"
-                          className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-5 text-sm font-bold focus:border-[#00c9a7] focus:ring-4 focus:ring-[#00c9a708] outline-none transition-all duration-300"
-                        />
-                        <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white px-6 py-2.5 rounded-xl font-bold text-[12px] hover:bg-[#00c9a7] hover:shadow-lg hover:shadow-[#00c9a730] transition-all">
-                          Verify
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-center gap-6 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
-                        <span className="text-[10px] font-black italic text-gray-400">G Pay</span>
-                        <span className="text-[10px] font-black italic text-gray-400">PhonePe</span>
-                        <span className="text-[10px] font-black italic text-gray-400">Paytm</span>
-                        <span className="text-[10px] font-black italic text-gray-400">Amazon Pay</span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Net Banking Section Removed */}
-              </AnimatePresence>
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+                Booking Summary
+              </h3>
+              <p className="text-sm font-medium text-gray-500 mt-1">
+                Review your journey details
+              </p>
             </div>
-          </div>
-
-          {/* Secure Badge Mini */}
-          <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] pt-2">
-            <ShieldCheck size={14} className="text-[#00c9a7]" />
-            100% Safe & Secure Transaction
-          </div>
-        </motion.div>
-
-        {/* Right Column: Order Summary */}
-        <motion.aside 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="space-y-6 mt-4 sm:mt-0"
-        >
-          <div className="bg-white rounded-xl p-6 sm:p-8 shadow-sm border border-gray-300 sticky top-24">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-6 sm:mb-8">
-              Booking Summary
-            </h3>
 
             <div className="space-y-6 pb-6 border-b border-gray-100">
               <div className="flex justify-between items-start">
@@ -262,10 +101,10 @@ export default function Payment() {
                   <div className="font-bold text-gray-900">{formatTo12Hour(trip.depart)}</div>
                 </div>
                 <div className="flex flex-col items-center gap-1">
-                  <div className="text-[9px] font-bold text-gray-300 uppercase tracking-[0.2em]">
+                  <div className="text-[9px] font-bold text-[#00c9a7] uppercase tracking-[0.2em]">
                     DIRECT
                   </div>
-                  <div className="w-12 h-[1px] bg-gray-100"></div>
+                  <div className="w-16 h-[2px] bg-gradient-to-r from-transparent via-[#00c9a7] to-transparent opacity-40"></div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
@@ -275,14 +114,14 @@ export default function Payment() {
                 </div>
               </div>
 
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-[#00c9a7] rounded-full"></div>
-                  <span className="text-gray-500 font-medium">
-                    Selected Seat
+                  <span className="text-gray-500 font-bold uppercase tracking-wider text-[11px]">
+                    Selected Seats
                   </span>
                 </div>
-                <span className="text-gray-900 font-bold">{selectedSeats.join(", ")}</span>
+                <span className="text-[#00c9a7] font-extrabold">{selectedSeats.join(", ")}</span>
               </div>
             </div>
 
@@ -305,18 +144,19 @@ export default function Payment() {
             {/* Total */}
             <div className="pt-6 border-t border-gray-100">
               <div className="flex justify-between items-end mb-8">
-                <span className="text-gray-500 font-medium text-sm">
-                  Amount to Pay
+                <span className="text-gray-500 font-bold uppercase tracking-wider text-[11px]">
+                  Total Amount
                 </span>
-                <span className="text-3xl font-bold text-gray-900">
+                <span className="text-4xl font-black text-gray-900 tracking-tight">
                   ₹{totalPrice.toFixed(2)}
                 </span>
               </div>
+              
               <button 
                 disabled={isProcessing}
-                onClick={() => {
+                onClick={async () => {
                   setIsProcessing(true);
-                  const loadingToast = toast.loading("Processing Payment...", {
+                  const loadingToast = toast.loading("Initializing transaction...", {
                     style: {
                       borderRadius: "10px",
                       background: "#0d1b2a",
@@ -325,33 +165,140 @@ export default function Payment() {
                     },
                   });
 
-                  setTimeout(() => {
-                    addBooking({
-                      from: trip.from,
-                      to: trip.to,
-                      date: trip.date || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-                      time: formatTo12Hour(trip.depart) || "10:15 AM",
-                      seat: selectedSeats.join(", "),
-                      busType: trip.type,
-                      operator: trip.operator,
-                      busClass: trip.busClass,
-                      price: `₹${totalPrice}`,
-                      image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=400"
+                  try {
+                    // Load Razorpay script dynamically
+                    const scriptLoaded = await loadRazorpayScript();
+                    if (!scriptLoaded) {
+                      toast.dismiss(loadingToast);
+                      setIsProcessing(false);
+                      toast.error("Failed to load Razorpay SDK. Please check your internet connection.");
+                      return;
+                    }
+
+                    // Create pending booking on backend
+                    const response = await api.post("/bookings", {
+                      trip: trip.id || trip._id,
+                      seats: selectedSeats,
+                      totalAmount: totalPrice,
+                      passengers: passengersArray
                     });
-                    
+
+                    const { booking, razorpayOrder, isDemo } = response.data;
                     toast.dismiss(loadingToast);
-                    toast.success("Payment Successful! 🎉", {
-                      duration: 3000,
+
+                    // If backend is running with demo/placeholder keys, launch our custom Sandbox modal!
+                    if (isDemo) {
+                      setSandboxData({ booking, razorpayOrder });
+                      setShowSandbox(true);
+                      return;
+                    }
+
+                    // User info prefill helpers
+                    let prefillInfo = { name: "Passenger", email: "passenger@buskaro.com" };
+                    try {
+                      const localUser = localStorage.getItem("user");
+                      if (localUser) {
+                        const parsedUser = JSON.parse(localUser);
+                        prefillInfo.name = parsedUser.name || prefillInfo.name;
+                        prefillInfo.email = parsedUser.email || prefillInfo.email;
+                      }
+                    } catch (e) {
+                      console.log("Error loading user profile", e);
+                    }
+
+                    // Trigger Real Razorpay Checkout
+                    const options = {
+                      key: razorpayOrder.keyId,
+                      amount: razorpayOrder.amount,
+                      currency: razorpayOrder.currency,
+                      name: "BusKaro",
+                      description: `Seats: ${selectedSeats.join(", ")} | Operator: ${trip.busName || trip.operator || "BusKaro"}`,
+                      image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=120",
+                      order_id: razorpayOrder.id,
+                      handler: async function (paymentResponse) {
+                        const verifyingToast = toast.loading("Verifying payment...", {
+                          style: {
+                            borderRadius: "10px",
+                            background: "#0d1b2a",
+                            color: "#fff",
+                            fontWeight: "bold",
+                          },
+                        });
+                        try {
+                          await api.post("/bookings/verify", {
+                            bookingId: booking._id,
+                            razorpayOrderId: paymentResponse.razorpay_order_id,
+                            razorpayPaymentId: paymentResponse.razorpay_payment_id,
+                            razorpaySignature: paymentResponse.razorpay_signature
+                          });
+
+                          addBooking({
+                            from: trip.from,
+                            to: trip.to,
+                            date: trip.date ? new Date(trip.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                            time: trip.departureTime || formatTo12Hour(trip.depart) || "10:15 AM",
+                            seat: selectedSeats.join(", "),
+                            busType: trip.type,
+                            operator: trip.busName || trip.operator,
+                            busClass: trip.busClass || (trip.type?.includes("AC") ? "AC" : "Non-AC"),
+                            price: `₹${totalPrice}`,
+                            image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=400",
+                            passengers: passengersArray
+                          });
+
+                          toast.dismiss(verifyingToast);
+                          toast.success("Payment Verified & Ticket Booked! 🎉", {
+                            duration: 3500,
+                            style: {
+                              borderRadius: "10px",
+                              background: "#00c9a7",
+                              color: "#fff",
+                              fontWeight: "bold",
+                            },
+                          });
+                          setTimeout(() => navigate('/my-bookings'), 1000);
+                        } catch (err) {
+                          toast.dismiss(verifyingToast);
+                          setIsProcessing(false);
+                          toast.error(err.response?.data?.message || "Payment verification failed.");
+                        }
+                      },
+                      prefill: {
+                        name: prefillInfo.name,
+                        email: prefillInfo.email,
+                        contact: "9999999999",
+                      },
+                      theme: {
+                        color: "#00c9a7",
+                      },
+                      modal: {
+                        ondismiss: function () {
+                          setIsProcessing(false);
+                          toast.error("Checkout cancelled by user.");
+                        }
+                      }
+                    };
+
+                    const rzp = new window.Razorpay(options);
+                    rzp.open();
+
+                  } catch (error) {
+                    toast.dismiss(loadingToast);
+                    setIsProcessing(false);
+                    const errMsg = error.response?.data?.message || "Transaction initiation failed. Try again.";
+                    toast.error(errMsg, {
+                      duration: 4000,
                       style: {
                         borderRadius: "10px",
-                        background: "#00c9a7",
+                        background: "#ef4444",
                         color: "#fff",
                         fontWeight: "bold",
-                      },
+                      }
                     });
-                    
-                    setTimeout(() => navigate('/my-bookings'), 1000);
-                  }, 2000);
+                    if (error.response?.status === 400 && error.response?.data?.message?.includes("already reserved")) {
+                      setTimeout(() => navigate('/select-seat', { state: { trip } }), 2000);
+                    }
+                  }
                 }}
                 className={`w-full ${isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-[#00c9a7]'} text-white font-bold py-4 rounded-xl transition-all shadow-xl active:scale-95 text-sm uppercase tracking-widest flex items-center justify-center gap-2`}
               >
@@ -363,10 +310,158 @@ export default function Payment() {
                 ) : "Pay Securely"}
               </button>
             </div>
-
           </div>
-        </motion.aside>
+          
+          {/* Secure Badge */}
+          <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-[0.2em] pt-4">
+            <ShieldCheck size={14} className="text-[#00c9a7]" />
+            100% Safe & Secure Transaction
+          </div>
+        </motion.div>
       </main>
+
+      {/* Sandbox Simulator Modal */}
+      <AnimatePresence>
+        {showSandbox && sandboxData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-md bg-black/50"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="bg-[#0b132b] text-white w-full max-w-md rounded-3xl overflow-hidden border border-slate-700/50 shadow-2xl"
+            >
+              {/* Header Banner */}
+              <div className="bg-gradient-to-r from-emerald-500/20 to-teal-500/10 p-6 border-b border-slate-800 flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400 shadow-inner">
+                  <ShieldCheck size={26} className="animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+                    Razorpay Sandbox
+                  </h4>
+                  <p className="text-[11px] text-emerald-400 uppercase tracking-widest font-black">
+                    Developer Mode Active
+                  </p>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-medium">Order ID</span>
+                    <span className="font-mono text-slate-200 bg-slate-950 px-2 py-0.5 rounded text-[10px]">
+                      {sandboxData.razorpayOrder.id}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-medium">Ticket Price</span>
+                    <span className="font-bold text-white">₹{totalPrice.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-medium">Seats</span>
+                    <span className="font-bold text-emerald-400">{selectedSeats.join(", ")}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-center sm:text-left">
+                  <p className="text-sm font-semibold text-slate-200">
+                    Simulate Payment Gateway response
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-slate-400 font-medium">
+                    Because placeholder keys were found in your environment, the platform falls back to Sandbox mode. This allows you to completely test the verification workflow in a sandbox.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="grid grid-cols-1 gap-3 pt-2">
+                  <button
+                    onClick={async () => {
+                      setShowSandbox(false);
+                      const verifyingToast = toast.loading("Verifying simulated transaction...", {
+                        style: {
+                          borderRadius: "10px",
+                          background: "#0d1b2a",
+                          color: "#fff",
+                          fontWeight: "bold",
+                        },
+                      });
+
+                      try {
+                        const mockPaymentId = `pay_demo_${Math.random().toString(36).substring(2, 10)}`;
+                        const mockSignature = `sig_demo_${Math.random().toString(36).substring(2, 10)}`;
+
+                        await api.post("/bookings/verify", {
+                          bookingId: sandboxData.booking._id,
+                          razorpayOrderId: sandboxData.razorpayOrder.id,
+                          razorpayPaymentId: mockPaymentId,
+                          razorpaySignature: mockSignature
+                        });
+
+                        addBooking({
+                          from: trip.from,
+                          to: trip.to,
+                          date: trip.date ? new Date(trip.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                          time: trip.departureTime || formatTo12Hour(trip.depart) || "10:15 AM",
+                          seat: selectedSeats.join(", "),
+                          busType: trip.type,
+                          operator: trip.busName || trip.operator,
+                          busClass: trip.busClass || (trip.type?.includes("AC") ? "AC" : "Non-AC"),
+                          price: `₹${totalPrice}`,
+                          image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&q=80&w=400",
+                          passengers: passengersArray
+                        });
+
+                        toast.dismiss(verifyingToast);
+                        toast.success("Transaction Simulated Successfully! 🎉", {
+                          duration: 3500,
+                          style: {
+                            borderRadius: "10px",
+                            background: "#00c9a7",
+                            color: "#fff",
+                            fontWeight: "bold",
+                          },
+                        });
+                        setTimeout(() => navigate('/my-bookings'), 1000);
+                      } catch (err) {
+                        toast.dismiss(verifyingToast);
+                        setIsProcessing(false);
+                        toast.error("Simulated verification failed.");
+                      }
+                    }}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] shadow-lg shadow-emerald-500/10 active:scale-95 transition-all"
+                  >
+                    Simulate Payment Success
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSandbox(false);
+                      setIsProcessing(false);
+                      toast.error("Simulated Payment Declined ❌", {
+                        style: {
+                          borderRadius: "10px",
+                          background: "#ef4444",
+                          color: "#fff",
+                          fontWeight: "bold",
+                        },
+                      });
+                    }}
+                    className="w-full border border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300 font-bold py-3 rounded-xl text-[11px] uppercase tracking-wider active:scale-95 transition-all"
+                  >
+                    Simulate Payment Failure
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Footer />
     </div>

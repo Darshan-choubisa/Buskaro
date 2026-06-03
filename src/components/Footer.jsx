@@ -1,5 +1,7 @@
 import { X, MessageCircle, Mail, Bus } from 'lucide-react';
 
+// bg-[#f8f9fd]
+
 const resources = ['Route Map', 'Safety Protocols', 'Partner Login'];
 const company   = ['Privacy Policy', 'Terms of Service', 'Careers'];
 

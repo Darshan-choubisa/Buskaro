@@ -1,74 +1,99 @@
 import { useNavigate } from 'react-router-dom';
+import { Star, Bus } from 'lucide-react';
 
 export default function TripCard({ trip }) {
   const navigate = useNavigate();
 
+  // Calculate dynamic single seats count for realism (matching mockup pattern)
+  const singleSeatsCount = Math.max(1, Math.floor((trip.seatsLeft || 21) / 4));
+
   return (
-    <div className={`relative bg-white rounded-xl p-4 md:p-5 shadow-sm border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 hover:shadow-md transition-all group`}>
+    <div className="bg-[#0d1b2a] text-white rounded-2xl p-5 md:p-6 shadow-[0_4px_20px_rgba(13,27,42,0.15)] border border-[#1b263b] hover:border-[#00c9a7]/30 hover:shadow-[0_8px_30px_rgba(0,201,167,0.1)] transition-all duration-300 group">
       
-      {trip.fastest && (
-        <div className="absolute -top-3 right-4 bg-gray-900 text-white text-[10px] font-bold px-4 py-1 rounded-full uppercase tracking-wider shadow-lg">
-          Fastest
-        </div>
-      )}
-
-      {/* Main Info */}
-      <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-[1.5fr_2fr_1.5fr] items-center gap-4 md:gap-8">
+      {/* Top Row: Operator details, Rating, Time Details, Price */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6 pb-4">
         
-        {/* Departure */}
-        <div className="flex flex-col items-center md:items-start">
-          <span className="text-[9px] font-bold text-[#00c9a7] uppercase tracking-widest mb-0.5">Departure</span>
-          <span className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-none">{trip.depart}</span>  
-          <span className="text-[11px] sm:text-[13px] font-semibold text-gray-400 mt-1">{trip.from}</span>
-        </div>
-
-        {/* Timeline */}
-        <div className="flex flex-col items-center justify-center py-4 md:py-0">
-          <div className="relative w-full h-8 flex items-center justify-center px-4">
-            <div className="absolute left-0 w-3 h-3 rounded-full border-2 border-[#00c9a7] bg-white z-10"></div>
-            <div className="h-[2px] bg-gray-100 w-full rounded-full">
-              <div className="h-full bg-gradient-to-r from-[#00c9a7] to-gray-900 rounded-full w-[100%]"></div>
-            </div>
-            <div className="absolute right-0 w-3 h-3 rounded-full bg-gray-900 z-10 shadow-sm"></div>
-            <div className="absolute -top-6 flex flex-col items-center">
-              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Bus Time</span>
-              <span className="text-[11px] font-bold text-[#0d1b2a] uppercase tracking-widest">{trip.duration}</span>
-            </div>
-          </div>
-          <div className="mt-2 flex items-center justify-center gap-2">
-            <span className="text-[11px] font-black text-gray-900 uppercase tracking-tighter">
+        {/* Left Side: Brand Name & Bus Type */}
+        <div className="flex-1 min-w-[200px] flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-white tracking-tight leading-none group-hover:text-[#00c9a7] transition-colors duration-200">
               {trip.operator}
-            </span>
-            <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md border ${
-              trip.busClass === 'AC' 
-                ? 'bg-blue-50 text-blue-600 border-blue-100' 
-                : 'bg-gray-50 text-gray-500 border-gray-100'
-            }`}>
-              {trip.busClass}
-            </span>
+            </h3>
+            <div className="p-1 bg-[#1b263b] rounded border border-slate-700/50 flex items-center justify-center">
+              <Bus size={13} className="text-slate-400" />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 font-medium tracking-tight">
+            {trip.type || `${trip.busClass} Seater/Sleeper (2+1)`}
+          </p>
+        </div>
+
+        {/* Rating Badge */}
+        <div className="flex items-center">
+          <div className="bg-[#0f8a5f] text-white text-[11px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
+            <Star size={11} className="fill-white text-white" />
+            <span>{trip.rating || '4.2'}</span>
           </div>
         </div>
 
-        {/* Arrival */}
-        <div className="flex flex-col items-center md:items-end">
-          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Arrival</span>
-          <span className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-none">{trip.arrive}</span>
-          <span className="text-[11px] sm:text-[13px] font-semibold text-gray-400 mt-1">{trip.to}</span>
+        {/* Departure/Arrival Times, Duration, Seat Count */}
+        <div className="flex-1 flex flex-col md:items-center gap-1">
+          <div className="flex items-center gap-2 text-[15px] sm:text-[16px] font-bold text-white tracking-tight">
+            <span>{trip.depart}</span>
+            <span className="text-slate-600 font-light">—</span>
+            <span>{trip.arrive}</span>
+          </div>
+          <p className="text-[11px] text-slate-400 font-medium tracking-tight whitespace-nowrap">
+            {trip.duration} · {trip.seatsLeft || 21} Seats ({singleSeatsCount} Single)
+          </p>
         </div>
+
+        {/* Price and Onwards Label */}
+        <div className="flex-shrink-0 flex flex-col md:items-end gap-0.5">
+          <span className="text-lg font-bold text-white">
+            ₹{(trip.price || 0).toLocaleString()}
+          </span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            Onwards
+          </span>
+        </div>
+
       </div>
 
-      {/* Price & Action */}
-      <div className="w-full md:w-auto flex flex-row md:flex-col items-center justify-between md:justify-center gap-4 md:pl-6 md:border-l border-gray-100">
-         <div className="flex flex-col items-start md:items-center">
-            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none">Starting from</span>
-            <span className="text-lg sm:text-2xl font-bold text-gray-900 mt-0.5">₹{trip.price}</span>
-         </div>
-        <button 
-          onClick={() => navigate('/select-seat', { state: { trip } })}
-          className="bg-gray-900 text-white font-bold py-2 sm:py-2.5 px-6 sm:px-8 rounded-lg hover:bg-[#00c9a7] transition-all shadow-md active:scale-95 text-[11px] sm:text-xs"
-        >
-          Select
-        </button>
+      {/* Dotted Separator Line */}
+      <div className="border-t border-dashed border-slate-800/80 my-1" />
+
+      {/* Bottom Row: Promotions / Features & View Seats CTA */}
+      <div className="flex items-center justify-between pt-4 gap-4">
+        
+        {/* Left Side Pill Badges */}
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {trip.seatsLeft < 5 && (
+            <span className="bg-rose-950/35 text-rose-300 text-[10px] font-semibold px-2.5 py-1 rounded-full border border-rose-900/30 animate-pulse">
+              Only {trip.seatsLeft} seats left
+            </span>
+          )}
+          {trip.busClass === 'AC' ? (
+            <span className="bg-teal-950/35 text-[#00c9a7] text-[10px] font-semibold px-2.5 py-1 rounded-full border border-teal-900/30">
+              AC Luxury
+            </span>
+          ) : (
+            <span className="bg-slate-900 text-slate-400 text-[10px] font-semibold px-2.5 py-1 rounded-full border border-slate-800">
+              Regular Class
+            </span>
+          )}
+        </div>
+
+        {/* Right Side: View Seats button using website color */}
+        <div>
+          <button 
+            onClick={() => navigate('/select-seat', { state: { trip } })}
+            className="bg-[#00c9a7] hover:bg-[#00b394] active:scale-95 text-white font-bold py-2 px-5 sm:px-6 rounded-full text-[12px] sm:text-[13px] tracking-tight transition-all duration-300 shadow-sm hover:shadow-md flex items-center justify-center"
+          >
+            View seats
+          </button>
+        </div>
+
       </div>
 
     </div>

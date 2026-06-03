@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import api from "../utils/api";
 import {
   Wifi,
   Zap,
@@ -22,10 +23,10 @@ const SEAT_ROWS = [
   ["6A", "6B", null, "6C", "6D"],
 ];
 
-const BOOKED_SEATS = ["1A", "4C", "2D"];
-
 export default function SeatSelection() {
-  const [selectedSeats, setSelectedSeats] = useState(["3C"]);
+  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [bookedSeats, setBookedSeats] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
   const trip = location.state?.trip || { 
@@ -34,6 +35,8 @@ export default function SeatSelection() {
     price: 520, 
     type: "Premium Intercity Coach" 
   };
+
+  const [passengerNames, setPassengerNames] = useState(location.state?.passengerNames || {});
 
   useEffect(() => {
     toast.success("Step 2: Choose your seat", {
@@ -47,17 +50,51 @@ export default function SeatSelection() {
     });
   }, []);
 
-  const handleSeatClick = (seatId) => {
-    if (BOOKED_SEATS.includes(seatId)) return;
+  useEffect(() => {
+    const fetchBookedSeats = async () => {
+      if (!trip || !(trip.id || trip._id)) return;
+      try {
+        setIsLoading(true);
+        const response = await api.get(`/bookings/trip/${trip.id || trip._id}`);
+        setBookedSeats(response.data);
+      } catch (error) {
+        console.error("Error fetching booked seats:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    setSelectedSeats((prev) =>
-      prev.includes(seatId)
-        ? prev.filter((s) => s !== seatId)
-        : [...prev, seatId],
-    );
+    fetchBookedSeats();
+  }, [trip]);
+
+  const handleSeatClick = (seatId) => {
+    if (bookedSeats.includes(seatId)) return;
+
+    setSelectedSeats((prev) => {
+      const isSelected = prev.includes(seatId);
+      if (isSelected) {
+        const updated = prev.filter((s) => s !== seatId);
+        setPassengerNames((names) => {
+          const newNames = { ...names };
+          delete newNames[seatId];
+          return newNames;
+        });
+        return updated;
+      } else {
+        return [...prev, seatId];
+      }
+    });
+  };
+
+  const handlePassengerNameChange = (seatId, name) => {
+    setPassengerNames((prev) => ({
+      ...prev,
+      [seatId]: name,
+    }));
   };
 
   const totalPrice = selectedSeats.length * trip.price;
+  const arePassengerNamesFilled = selectedSeats.length > 0 && selectedSeats.every(seat => passengerNames[seat] && passengerNames[seat].trim() !== "");
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-gray-900">
@@ -138,7 +175,7 @@ export default function SeatSelection() {
                           ></div>
                         );
 
-                      const isBooked = BOOKED_SEATS.includes(seatId);
+                      const isBooked = bookedSeats.includes(seatId);
                       const isSelected = selectedSeats.includes(seatId);
 
                       return (
@@ -207,7 +244,7 @@ export default function SeatSelection() {
             </div>
 
             {/* Selection Details */}
-            <div className="bg-gray-50 rounded-2xl p-5 space-y-4 mb-8">
+            <div className="bg-gray-50 rounded-2xl p-5 space-y-4 mb-6">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-500 font-medium">
                   Selected Seats
@@ -221,6 +258,33 @@ export default function SeatSelection() {
                 <span className="text-gray-900 font-bold">General Member</span>
               </div>
             </div>
+
+            {/* Passenger Name Inputs */}
+            {selectedSeats.length > 0 && (
+              <div className="bg-gray-50 rounded-2xl p-5 space-y-4 mb-6 border border-gray-100">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
+                  Passenger Details
+                </span>
+                <div className="space-y-3">
+                  {selectedSeats.map((seatId) => (
+                    <div key={seatId} className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 flex justify-between">
+                        <span>Passenger for Seat {seatId}</span>
+                        <span className="text-red-500 font-bold">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Enter full name"
+                        value={passengerNames[seatId] || ""}
+                        onChange={(e) => handlePassengerNameChange(seatId, e.target.value)}
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#00c9a7] focus:ring-1 focus:ring-[#00c9a7] transition-all"
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Amenities */}
             <div className="space-y-4 mb-10">
@@ -254,11 +318,36 @@ export default function SeatSelection() {
                 </span>
               </div>
               <button
-                onClick={() => navigate("/payment", { state: { trip, selectedSeats } })}
-                className="w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-[#00c9a7] transition-all shadow-xl active:scale-95 text-xs uppercase tracking-widest"
+                disabled={selectedSeats.length === 0 || !arePassengerNamesFilled}
+                onClick={() => {
+                  const token = localStorage.getItem("token");
+                  if (!token) {
+                    toast.error("Please login to proceed with your booking.", {
+                      style: {
+                        borderRadius: "10px",
+                        background: "#0d1b2a",
+                        color: "#fff",
+                        fontWeight: "bold",
+                      },
+                    });
+                    navigate("/login", { state: { from: "/select-seat", trip, selectedSeats, passengerNames } });
+                    return;
+                  }
+                  navigate("/payment", { state: { trip, selectedSeats, passengerNames } });
+                }}
+                className={`w-full font-bold py-4 rounded-xl transition-all text-xs uppercase tracking-widest ${
+                  selectedSeats.length === 0 || !arePassengerNamesFilled
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed border-transparent shadow-none"
+                    : "bg-gray-900 text-white hover:bg-[#00c9a7] hover:shadow-xl active:scale-95"
+                }`}
               >
                 Proceed to Payment
               </button>
+              {selectedSeats.length > 0 && !arePassengerNamesFilled && (
+                <div className="text-[10px] text-amber-500 font-bold uppercase tracking-wider text-center mt-3 animate-pulse">
+                  ⚠️ Please enter name for all seats to proceed
+                </div>
+              )}
             </div>
           </div>
 

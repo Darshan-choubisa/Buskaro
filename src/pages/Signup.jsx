@@ -1,29 +1,87 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Bus, ChevronLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight, Bus, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import CryptoJS from 'crypto-js';
 
 const Signup = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Validation States
+  const [errors, setErrors] = useState({ name: '', email: '', password: '' });
+  const [touched, setTouched] = useState({ name: false, email: false, password: false });
+
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
+
+  // Real-time Validation Engine
+  useEffect(() => {
+    const newErrors = { name: '', email: '', password: '' };
+
+    if (touched.name) {
+      if (!name) {
+        newErrors.name = 'Full Name is required';
+      } else if (name.trim().length < 3) {
+        newErrors.name = 'Name must be at least 3 characters';
+      }
+    }
+
+    if (touched.email) {
+      if (!email) {
+        newErrors.email = 'Email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        newErrors.email = 'Please enter a valid email';
+      }
+    }
+
+    if (touched.password) {
+      if (!password) {
+        newErrors.password = 'Password is required';
+      } else if (password.length < 6) {
+        newErrors.password = 'Must be at least 6 characters';
+      }
+    }
+
+    setErrors(newErrors);
+  }, [name, email, password, touched]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Touch all fields to trigger validation errors
+    setTouched({ name: true, email: true, password: true });
+
+    const isNameValid = name && name.trim().length >= 3;
+    const isEmailValid = email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isPasswordValid = password && password.length >= 6;
+
+    if (!isNameValid || !isEmailValid || !isPasswordValid) {
+      toast.error('Please correct errors before signing up.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await api.post('/auth/register', { name, email, password });
+      const encryptedPassword = CryptoJS.AES.encrypt(password, 'super-temporary-key').toString();
+      const response = await api.post('/auth/register', { name, email, password: encryptedPassword });
       const { token, name: userName } = response.data;
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(response.data));
       
       toast.success(`Welcome to BusKaro, ${userName}!`);
-      navigate('/');
+      const redirectPath = location.state?.from || '/';
+      navigate(redirectPath, { state: location.state });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
@@ -62,41 +120,86 @@ const Signup = () => {
           <p className="text-gray-500 text-[12px] sm:text-sm font-medium">Join BusKaro and start your journey</p>
         </div>
 
-        <form className="w-full space-y-4" onSubmit={handleSubmit}>
+        <form className="w-full space-y-4" onSubmit={handleSubmit} autoComplete="off" noValidate>
+          {/* Full Name field */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+            <div className="flex justify-between items-center px-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+              {touched.name && errors.name && (
+                <span className="text-[10px] font-semibold text-red-500">{errors.name}</span>
+              )}
+            </div>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="John Doe"
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 focus:ring-4 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720] outline-none transition-all shadow-sm"
+              onBlur={() => handleBlur('name')}
+              className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 focus:ring-4 outline-none transition-all shadow-sm ${
+                touched.name && errors.name
+                  ? 'border-red-500 focus:ring-red-500/5 focus:border-red-500/20'
+                  : 'border-gray-100 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720]'
+              }`}
+              disabled={isLoading}
             />
           </div>
 
+          {/* Email field */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+            <div className="flex justify-between items-center px-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+              {touched.email && errors.email && (
+                <span className="text-[10px] font-semibold text-red-500">{errors.email}</span>
+              )}
+            </div>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@email.com"
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 focus:ring-4 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720] outline-none transition-all shadow-sm"
+              onBlur={() => handleBlur('email')}
+              autoComplete="off"
+              className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm text-gray-900 focus:ring-4 outline-none transition-all shadow-sm ${
+                touched.email && errors.email
+                  ? 'border-red-500 focus:ring-red-500/5 focus:border-red-500/20'
+                  : 'border-gray-100 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720]'
+              }`}
+              disabled={isLoading}
             />
           </div>
 
+          {/* Password field */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 focus:ring-4 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720] outline-none transition-all shadow-sm"
-            />
+            <div className="flex justify-between items-center px-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
+              {touched.password && errors.password && (
+                <span className="text-[10px] font-semibold text-red-500">{errors.password}</span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => handleBlur('password')}
+                autoComplete="new-password"
+                className={`w-full bg-gray-50 border rounded-xl pl-4 pr-10 py-3 text-sm text-gray-900 focus:ring-4 outline-none transition-all shadow-sm ${
+                  touched.password && errors.password
+                    ? 'border-red-500 focus:ring-red-500/5 focus:border-red-500/20'
+                    : 'border-gray-100 focus:ring-[#00c9a7]/5 focus:border-[#00c9a720]'
+                }`}
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={isLoading}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button 
@@ -107,7 +210,7 @@ const Signup = () => {
             {isLoading ? 'Creating Account...' : 'Create Account'} <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <div className="relative flex items-center justify-center py-1">
+          {/* <div className="relative flex items-center justify-center py-1">
             <div className="w-full h-[1px] bg-gray-100"></div>
             <span className="absolute bg-white px-4 text-[10px] font-bold text-gray-300 uppercase tracking-widest">or</span>
           </div>
@@ -120,7 +223,7 @@ const Signup = () => {
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
             Continue with Google
-          </button>
+          </button> */}
         </form>
 
         <p className="text-gray-500 text-[13px] sm:text-sm font-semibold pt-2">

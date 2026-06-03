@@ -1,7 +1,7 @@
 const stats = [
-  { value: '450+',  label: 'Daily Stations'    },
+  { value: '25+',  label: 'Daily Stations'    },
   { value: '99.8%', label: 'On-Time Precision'  },
-  { value: '12M+',  label: 'Annual Travelers'   },
+  { value: '25K',  label: 'Annual Travelers'   },
   { value: '0%',    label: 'Carbon Impact'      },
 ];
 

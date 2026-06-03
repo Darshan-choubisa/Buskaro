@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const CryptoJS = require('crypto-js');
 
 // Generate Token
 const generateToken = (id) => {
@@ -8,12 +9,25 @@ const generateToken = (id) => {
   });
 };
 
+// Decrypt password helper (handles encrypted payloads & falls back to plaintext if necessary)
+const decryptPassword = (encryptedPassword) => {
+  if (!encryptedPassword) return '';
+  try {
+    const bytes = CryptoJS.AES.decrypt(encryptedPassword, 'super-temporary-key');
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    return decrypted || encryptedPassword;
+  } catch (err) {
+    return encryptedPassword;
+  }
+};
+
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+    const decryptedPassword = decryptPassword(password);
 
     // Check if user exists
     const userExists = await User.findOne({ email });
@@ -25,7 +39,7 @@ exports.register = async (req, res) => {
     const user = await User.create({
       name,
       email,
-      password
+      password: decryptedPassword
     });
 
     if (user) {
@@ -47,15 +61,20 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const decryptedPassword = decryptPassword(password);
 
     // Check for user email
     const user = await User.findOne({ email }).select('+password');
 
-    if (user && (await user.matchPassword(password))) {
+    if (user && (await user.matchPassword(decryptedPassword))) {
+      if (user.isBlocked) {
+        return res.status(403).json({ message: 'Your account has been blocked. Please contact administration.' });
+      }
       res.json({
         _id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role,
         token: generateToken(user._id)
       });
     } else {

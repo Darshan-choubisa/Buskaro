@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import TripCard from "../components2/TripCard";
-import FeatureCard from "../components2/FeatureCard";
-import ReferCard from "../components2/ReferCard";
 import Footer from "../components/Footer";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Pencil, ArrowRight, ArrowLeft, Calendar, User, MapPin } from "lucide-react";
@@ -36,13 +34,10 @@ export default function Trips() {
           `/trips?from=${from}&to=${to}&date=${date}`,
         );
         // Map backend fields to frontend expected fields
-        const operators = ["Kalpana Travels", "Ashok Travels", "Shrinath Solitaire", "Rishabh Travels", "Zingbus", "Patel Travels", "VRL Travels", "Neeta Tours", "SRS Travels", "Orange Travels"];
-        const busClasses = ["AC", "Non-AC"];
-        
-        const mappedTrips = response.data.map((t, idx) => ({
+        const mappedTrips = response.data.map((t) => ({
           id: t._id,
-          operator: operators[idx % operators.length],
-          busClass: busClasses[idx % 2], // Simple alternating logic for variety
+          operator: t.busName,
+          busClass: t.type.includes("AC") ? "AC" : "Non-AC",
           depart: formatTo12Hour(t.departureTime),
           arrive: formatTo12Hour(t.arrivalTime),
           from: t.from,
@@ -51,7 +46,9 @@ export default function Trips() {
           type: t.type,
           price: t.price,
           date: date,
-          fastest: t.duration.includes("2H"), // Example logic for fastest
+          // Generate a more "realistic" rating based on operator name length or other traits
+          rating: (4.0 + (t.busName.length % 10) / 10 + (Math.random() * 0.3)).toFixed(1), 
+          seatsLeft: Math.floor(Math.random() * 20) + 1, // Random seats left
           highlighted: t.type.includes("Shivneri"),
         }));
         setTrips(mappedTrips);
@@ -171,11 +168,6 @@ export default function Trips() {
               </div>
             )}
 
-            {/* Bottom Cards */}
-            <div className="flex flex-col md:flex-row gap-8 pt-8">
-              <FeatureCard />
-              <ReferCard />
-            </div>
           </div>
         </div>
       </main>

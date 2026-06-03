@@ -4,10 +4,12 @@ export default function DestinationCard({
   price,
   departures,
   badge,
-  className = '',
+  className = "",
 }) {
   return (
-    <div className={`relative overflow-hidden rounded-lg cursor-pointer group ${className}`}>
+    <div
+      className={`relative overflow-hidden rounded-lg cursor-pointer group ${className}`}
+    >
       <img
         src={image}
         alt={name}
@@ -25,10 +27,13 @@ export default function DestinationCard({
 
       {/* Bottom Info */}
       <div className="absolute bottom-0 left-0 right-0 p-4">
-        <h3 className="text-white font-bold text-[15px] leading-snug">{name}</h3>
+        <h3 className="text-white font-bold text-[15px] leading-snug">
+          {name}
+        </h3>
         <p className="text-gray-300 text-[12px] mt-0.5">
           From {price} · {departures}
         </p>
+        
       </div>
     </div>
   );
