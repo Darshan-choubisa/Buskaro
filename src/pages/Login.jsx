@@ -68,6 +68,8 @@ const Login = () => {
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(response.data));
+      // Signal BookingContext to load this user's scoped bookings immediately
+      window.dispatchEvent(new Event('buskaro-auth-change'));
       
       toast.success(`Welcome back, ${name}!`);
       const redirectPath = location.state?.from || '/';

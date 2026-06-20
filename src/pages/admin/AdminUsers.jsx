@@ -144,7 +144,7 @@ const AdminUsers = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <div className="flex justify-end gap-1">
                         <button 
                           onClick={() => handleToggleBlock(user._id, user.isBlocked)}
                           className={`p-1.5 hover:bg-slate-100 rounded transition-all ${

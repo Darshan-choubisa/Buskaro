@@ -78,6 +78,8 @@ const Signup = () => {
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(response.data));
+      // Signal BookingContext to initialise with this new user's scoped slot (empty for new accounts)
+      window.dispatchEvent(new Event('buskaro-auth-change'));
       
       toast.success(`Welcome to BusKaro, ${userName}!`);
       const redirectPath = location.state?.from || '/';

@@ -1,6 +1,8 @@
 const Booking = require('../models/Booking');
 const Trip = require('../models/Trip');
+const Refund = require('../models/Refund');
 const Razorpay = require('razorpay');
+const { calculateRefundPolicy } = require('../utils/refundPolicy');
 
 // Initialize Razorpay SDK if valid credentials are provided
 let razorpay;
@@ -55,6 +57,30 @@ exports.createBooking = async (req, res) => {
       passengers: req.body.passengers
     });
 
+    const visualId = `BK-${booking._id.toString().slice(-5).toUpperCase()}`;
+    booking.bookingId = visualId;
+    booking.userId = req.user._id;
+    booking.amountPaid = totalAmount;
+    booking.passengerDetails = req.body.passengers;
+    booking.bookingStatus = 'pending';
+    booking.busDetails = {
+      busName: tripExists.busName || '—',
+      operator: tripExists.operator || '—',
+      from: tripExists.from || '—',
+      to: tripExists.to || '—',
+      date: tripExists.date,
+      departureTime: tripExists.departureTime || '—'
+    };
+    booking.payment = {
+      razorpayOrderId: null,
+      razorpayPaymentId: null,
+      razorpaySignature: null,
+      paymentStatus: 'pending',
+      paymentMethod: 'Razorpay',
+      paidAt: null
+    };
+    await booking.save();
+
     // Generate Razorpay Order
     if (razorpay) {
       try {
@@ -66,6 +92,7 @@ exports.createBooking = async (req, res) => {
         const rzpOrder = await razorpay.orders.create(options);
         
         booking.razorpayOrderId = rzpOrder.id;
+        booking.payment.razorpayOrderId = rzpOrder.id;
         await booking.save();
 
         return res.status(201).json({
@@ -86,6 +113,7 @@ exports.createBooking = async (req, res) => {
     // Demo Sandbox Mode Fallback
     const demoOrderId = `order_demo_${booking._id}_${Math.random().toString(36).substring(4, 8)}`;
     booking.razorpayOrderId = demoOrderId;
+    booking.payment.razorpayOrderId = demoOrderId;
     await booking.save();
 
     res.status(201).json({
@@ -119,10 +147,23 @@ exports.verifyPayment = async (req, res) => {
 
     // Check if it's a demo order
     if (razorpayOrderId && razorpayOrderId.startsWith('order_demo_')) {
+      const mockPayId = razorpayPaymentId || `pay_demo_${Math.random().toString(36).substring(7)}`;
+      const mockSig = razorpaySignature || `sig_demo_${Math.random().toString(36).substring(7)}`;
+
       booking.status = 'confirmed';
+      booking.bookingStatus = 'confirmed';
       booking.razorpayOrderId = razorpayOrderId;
-      booking.razorpayPaymentId = razorpayPaymentId || `pay_demo_${Math.random().toString(36).substring(7)}`;
-      booking.razorpaySignature = razorpaySignature || `sig_demo_${Math.random().toString(36).substring(7)}`;
+      booking.razorpayPaymentId = mockPayId;
+      booking.razorpaySignature = mockSig;
+
+      booking.payment = {
+        razorpayOrderId: razorpayOrderId,
+        razorpayPaymentId: mockPayId,
+        razorpaySignature: mockSig,
+        paymentStatus: 'captured',
+        paymentMethod: 'Demo',
+        paidAt: new Date()
+      };
       await booking.save();
 
       // Update availableSeats on the Trip
@@ -147,15 +188,34 @@ exports.verifyPayment = async (req, res) => {
 
     if (digest !== razorpaySignature) {
       booking.status = 'cancelled';
+      booking.bookingStatus = 'cancelled';
+      booking.payment = {
+        razorpayOrderId: razorpayOrderId,
+        razorpayPaymentId: razorpayPaymentId,
+        razorpaySignature: razorpaySignature,
+        paymentStatus: 'failed',
+        paymentMethod: 'Razorpay',
+        paidAt: null
+      };
       await booking.save();
       return res.status(400).json({ message: 'Transaction signature verification failed. Payment tampered.' });
     }
 
     // Update booking status to confirmed
     booking.status = 'confirmed';
+    booking.bookingStatus = 'confirmed';
     booking.razorpayOrderId = razorpayOrderId;
     booking.razorpayPaymentId = razorpayPaymentId;
     booking.razorpaySignature = razorpaySignature;
+
+    booking.payment = {
+      razorpayOrderId: razorpayOrderId,
+      razorpayPaymentId: razorpayPaymentId,
+      razorpaySignature: razorpaySignature,
+      paymentStatus: 'captured',
+      paymentMethod: 'Razorpay',
+      paidAt: new Date()
+    };
     await booking.save();
 
     // Update availableSeats on the Trip
@@ -172,6 +232,41 @@ exports.verifyPayment = async (req, res) => {
     });
   } catch (error) {
     console.error('Error verifying payment:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get all bookings for the logged-in user
+// @route   GET /api/bookings/my
+// @access  Private
+exports.getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.user._id })
+      .populate('trip')
+      .sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (error) {
+    console.error('Error fetching user bookings:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get a single booking by ID
+// @route   GET /api/bookings/:id
+// @access  Private
+exports.getBookingById = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id).populate('trip');
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found.' });
+    }
+    // Check ownership
+    if (booking.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized to view this booking.' });
+    }
+    res.json(booking);
+  } catch (error) {
+    console.error('Error fetching booking:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -201,4 +296,99 @@ exports.getBookedSeatsForTrip = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Cancel a booking and calculate refund
+// @route   PUT /api/bookings/:id/cancel
+// @access  Private
+exports.cancelBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id).populate('trip');
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found.' });
+    }
+
+    // Check ownership
+    if (booking.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized to cancel this booking.' });
+    }
+
+    // Check if booking is confirmed
+    if (booking.status !== 'confirmed') {
+      return res.status(400).json({ message: 'Only confirmed bookings can be cancelled.' });
+    }
+
+    const trip = booking.trip;
+    if (!trip) {
+      return res.status(404).json({ message: 'Associated trip not found.' });
+    }
+
+    const departureDateEndOfDay = new Date(trip.date);
+    departureDateEndOfDay.setHours(23, 59, 59, 999);
+
+    const bookingDate = new Date(booking.bookingDate || booking.createdAt);
+    const cancelDate = new Date();
+
+    // Safety check: Cannot cancel if the trip day has fully ended
+    const timeToDepartureMs = departureDateEndOfDay.getTime() - cancelDate.getTime();
+    if (timeToDepartureMs <= 0) {
+      return res.status(400).json({ message: 'Cannot cancel a trip that has already departed.' });
+    }
+
+    const policy = calculateRefundPolicy({
+      totalAmount: booking.totalAmount,
+      tripDate: trip.date,
+      bookingDate,
+      cancelDate,
+    });
+
+    const refundPercentage = policy.refundPercentage;
+    const refundAmount = policy.refundAmount;
+    const cancellationCharges = policy.cancellationCharges;
+    const cancellationReason = req.body.cancellationReason || '';
+
+    // Update booking status
+    booking.status = 'cancelled';
+    booking.bookingStatus = 'cancelled';
+    booking.refundAmount = refundAmount;
+    booking.refundPercentage = refundPercentage;
+    booking.cancellationCharges = cancellationCharges;
+    booking.cancellationReason = cancellationReason;
+    booking.refundStatus = 'pending';
+    booking.cancelledAt = cancelDate;
+
+    // Create a Refund document — Admin must approve before money is returned
+    const refundDoc = await Refund.create({
+      bookingId: booking._id,
+      userId: booking.user,
+      razorpayPaymentId: booking.payment?.razorpayPaymentId || booking.razorpayPaymentId || null,
+      amount: refundAmount,
+      refundAmount: refundAmount,
+      percentage: refundPercentage,
+      refundPercentage: refundPercentage,
+      originalFare: booking.totalAmount,
+      cancellationCharges,
+      status: 'pending',
+      reason: cancellationReason,
+    });
+
+    booking.refundId = refundDoc._id;
+    await booking.save();
+
+    // Restore seat availability on the Trip
+    trip.availableSeats = Math.min(trip.totalSeats, trip.availableSeats + booking.seats.length);
+    await trip.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Booking cancelled. Refund of ₹${refundAmount} (${refundPercentage}%) has been submitted for admin approval.`,
+      booking,
+      refund: refundDoc,
+    });
+
+  } catch (error) {
+    console.error('Error cancelling booking:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 

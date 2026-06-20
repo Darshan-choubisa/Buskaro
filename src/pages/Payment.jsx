@@ -6,7 +6,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { formatTo12Hour } from "../utils/formatters";
 import api from "../utils/api";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const loadRazorpayScript = () => {
@@ -141,6 +141,36 @@ export default function Payment() {
               </div>
             </div>
 
+            {/* Cancellation Policy */}
+            <div className="bg-blue-50/60 border border-blue-100 rounded-xl px-5 py-4 mb-2">
+              <div className="flex items-center gap-2 mb-3">
+                <Info size={14} className="text-blue-500 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-widest">Cancellation & Refund Policy</span>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 w-4 h-4 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[8px] font-black text-emerald-700">✓</span>
+                  </span>
+                  <div>
+                    <span className="text-[11px] font-semibold text-gray-700">Booked ≥5 days before departure</span>
+                    <span className="text-[10px] text-gray-500 block">AND cancel ≥3 days before departure</span>
+                  </div>
+                  <span className="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">100% Refund</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 w-4 h-4 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[8px] font-black text-amber-700">!</span>
+                  </span>
+                  <div>
+                    <span className="text-[11px] font-semibold text-gray-700">All other cases</span>
+                    <span className="text-[10px] text-gray-500 block">(booked same-day, or cancel within 3 days)</span>
+                  </div>
+                  <span className="ml-auto text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">50% Refund</span>
+                </div>
+              </div>
+            </div>
+
             {/* Total */}
             <div className="pt-6 border-t border-gray-100">
               <div className="flex justify-between items-end mb-8">
@@ -233,6 +263,10 @@ export default function Payment() {
                           });
 
                           addBooking({
+                            dbBookingId: booking._id,
+                            bookingDate: booking.bookingDate || new Date().toISOString(),
+                            rawDate: trip.date,
+                            rawPrice: totalPrice,
                             from: trip.from,
                             to: trip.to,
                             date: trip.date ? new Date(trip.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
@@ -405,6 +439,10 @@ export default function Payment() {
                         });
 
                         addBooking({
+                          dbBookingId: sandboxData.booking._id,
+                          bookingDate: sandboxData.booking.bookingDate || new Date().toISOString(),
+                          rawDate: trip.date,
+                          rawPrice: totalPrice,
                           from: trip.from,
                           to: trip.to,
                           date: trip.date ? new Date(trip.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),

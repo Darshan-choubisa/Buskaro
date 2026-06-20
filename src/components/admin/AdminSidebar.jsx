@@ -36,6 +36,7 @@ const AdminSidebar = () => {
     { name: 'Buses & Trips', icon: Bus, path: '/admin/buses' },
     { name: 'Bookings', icon: Ticket, path: '/admin/bookings' },
     { name: 'Users', icon: Users, path: '/admin/users' },
+    { name: 'Refunds', icon: IndianRupee, path: '/admin/refunds' },
   ];
 
   return (

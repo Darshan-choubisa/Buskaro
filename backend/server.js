@@ -28,6 +28,8 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/trips', require('./routes/tripRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
+app.use('/api/refunds', require('./routes/refundRoutes'));
+app.use('/api/operator', require('./routes/operatorRoutes'));
 
 // Define the port (from environment variable or fallback to 5000)
 const PORT = process.env.PORT || 5000;

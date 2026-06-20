@@ -1,20 +1,100 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { Ticket, Calendar, Clock, MapPin, ChevronRight, Bus } from "lucide-react";
+import { Ticket, Calendar, Clock, MapPin, ChevronRight, Bus, Download } from "lucide-react";
 import { useBookings } from "../context/BookingContext";
 import { useNavigate } from "react-router-dom";
 import { formatTo12Hour } from "../utils/formatters";
+import { generateBookingTicket, generateCancellationReceipt } from "../utils/receiptGenerator";
+import { calculateRefundPolicy } from "../utils/refundPolicy";
+import api from "../utils/api";
+import toast from "react-hot-toast";
 
 // Mock data removed to show only real user bookings
 
 
 export default function MyBookings() {
-  const { bookings: realBookings, clearBookings } = useBookings();
+  const { bookings: realBookings, clearBookings, cancelBookingInContext } = useBookings();
   const navigate = useNavigate();
+  const [cancellingId, setCancellingId] = useState(null);
   
   // Only show real user-selected bookings
   const allBookings = realBookings;
+
+  const getRefundEstimate = (booking) => {
+    if (!booking.rawDate || !booking.bookingDate || !booking.rawPrice) {
+      return { percent: 50, amount: (parseFloat(booking.price?.replace(/[^\d.]/g, '')) || 0) * 0.5, expired: false };
+    }
+
+    const departureDateEndOfDay = new Date(booking.rawDate);
+    departureDateEndOfDay.setHours(23, 59, 59, 999);
+
+    const cancelDate = new Date();
+    const timeToDepartureMs = departureDateEndOfDay.getTime() - cancelDate.getTime();
+    if (timeToDepartureMs <= 0) {
+      return { percent: 0, amount: 0, expired: true };
+    }
+
+    const policy = calculateRefundPolicy({
+      totalAmount: booking.rawPrice,
+      tripDate: booking.rawDate,
+      bookingDate: booking.bookingDate,
+      cancelDate,
+    });
+
+    return { percent: policy.refundPercentage, amount: policy.refundAmount, expired: false };
+  };
+
+  // Navigate to the dedicated cancellation confirmation page
+  const handleCancelTicket = (booking) => {
+    const { expired } = getRefundEstimate(booking);
+    if (expired) {
+      toast.error("This trip has already departed. Cannot cancel ticket.", {
+        style: { borderRadius: "10px", background: "#0d1b2a", color: "#fff", fontWeight: "bold" }
+      });
+      return;
+    }
+    navigate(`/cancel-ticket/${booking.id}`);
+  };
+
+  // Download a ticket or cancellation receipt depending on the booking state
+  const handleDownloadReceipt = (booking) => {
+    const basePayload = {
+      bookingId: booking.id,
+      passengerName: booking.passengers?.[0]?.name || "Passenger",
+      bookingDate: booking.bookingDate || booking.createdAt,
+      busName: booking.busName || booking.operator || "—",
+      busOperator: booking.operator || "—",
+      busClass: booking.busClass || "—",
+      from: booking.from,
+      to: booking.to,
+      journeyDate: booking.rawDate,
+      departureTime: formatTo12Hour(booking.time),
+      seats: booking.seat ? booking.seat.split(", ") : [],
+      passengers: booking.passengers || [],
+      originalFare: booking.rawPrice || booking.totalAmount || 0,
+    };
+
+    if (booking.status === 'Cancelled') {
+      generateCancellationReceipt({
+        ...basePayload,
+        refundPercentage: booking.refundPercentage || 0,
+        cancellationCharges: booking.cancellationCharges || 0,
+        refundAmount: booking.refundAmount || 0,
+        refundStatus: booking.refundStatus || "processing",
+        cancelledAt: booking.cancelledAt,
+        cancellationReason: booking.cancellationReason || "",
+      });
+      return;
+    }
+
+    generateBookingTicket({
+      ...basePayload,
+      bookingStatus: booking.status === 'Upcoming' ? 'confirmed' : booking.status,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-gray-900">
       <Navbar />
@@ -62,6 +142,8 @@ export default function MyBookings() {
                 <div className={`absolute top-4 left-4 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider shadow-sm ${
                   booking.status === 'Upcoming' 
                     ? 'bg-[#00c9a7] text-white' 
+                    : booking.status === 'Cancelled'
+                    ? 'bg-rose-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.2)]'
                     : 'bg-slate-800 text-white border border-slate-700/50'
                 }`}>
                   {booking.status}
@@ -152,6 +234,80 @@ export default function MyBookings() {
                     <div className="text-sm font-bold text-[#00c9a7]">{booking.price}</div>
                   </div>
                 </div>
+
+                {booking.status === 'Cancelled' && (
+                  <div className="mt-4 space-y-3">
+                    <div className="p-3.5 bg-rose-950/20 border border-rose-900/30 rounded-xl flex items-center justify-between text-xs text-rose-200">
+                      <div>
+                        <span className="font-bold block uppercase tracking-wider text-[9px] text-rose-400">
+                          Refund Request
+                        </span>
+                        <span className="font-extrabold text-sm text-rose-100">
+                          ₹{booking.refundAmount?.toFixed(2) || 0}
+                        </span>
+                        {booking.cancelledAt && (
+                          <span className="block text-[9px] text-rose-400/70 mt-0.5">
+                            Cancelled: {new Date(booking.cancelledAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="bg-rose-900/40 border border-rose-800/50 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-rose-300">
+                          {booking.refundPercentage || 0}% Eligible
+                        </span>
+                        {/* 4-state Refund Status Badge */}
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
+                          booking.refundStatus === 'refunded'
+                            ? 'bg-emerald-900/30 text-emerald-300 border-emerald-800/50'
+                            : booking.refundStatus === 'approved'
+                            ? 'bg-blue-900/30 text-blue-300 border-blue-800/50'
+                            : booking.refundStatus === 'processing'
+                            ? 'bg-indigo-900/30 text-indigo-300 border-indigo-800/50'
+                            : booking.refundStatus === 'failed'
+                            ? 'bg-red-900/30 text-red-300 border-red-800/50'
+                            : booking.refundStatus === 'rejected'
+                            ? 'bg-rose-900/50 text-rose-300 border-rose-700/50'
+                            : 'bg-amber-900/30 text-amber-300 border-amber-800/50'
+                        }`}>
+                          {booking.refundStatus === 'refunded' ? '✓ Refunded'
+                           : booking.refundStatus === 'approved' ? '⏳ Approved'
+                           : booking.refundStatus === 'processing' ? '⏳ Processing Payout'
+                           : booking.refundStatus === 'failed' ? '✗ Payout Failed'
+                           : booking.refundStatus === 'rejected' ? '✗ Rejected'
+                           : '⏳ Pending Approval'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      id={`btn-download-receipt-${booking.id}`}
+                      onClick={() => handleDownloadReceipt(booking)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 border border-slate-700 bg-slate-900/30 hover:bg-slate-800/40 rounded-xl text-[11px] font-bold text-slate-300 hover:text-white transition-all group"
+                    >
+                      <Download size={13} className="group-hover:translate-y-0.5 transition-transform" />
+                      Download Cancellation Receipt
+                    </button>
+                  </div>
+                )}
+
+                {booking.status === 'Upcoming' && (
+                  <div className="mt-6 flex flex-wrap justify-end gap-3">
+                    <button
+                      id={`btn-download-ticket-${booking.id}`}
+                      onClick={() => handleDownloadReceipt(booking)}
+                      className="flex items-center gap-2 text-[10px] font-bold text-[#00c9a7] uppercase tracking-widest hover:text-[#00c9a7]/80 transition-colors border border-[#00c9a7]/25 bg-[#00c9a7]/10 px-4 py-2 rounded-lg hover:bg-[#00c9a7]/15"
+                    >
+                      <Download size={13} className="transition-transform" />
+                      Download Ticket
+                    </button>
+                    <button
+                      disabled={cancellingId === booking.id}
+                      onClick={() => handleCancelTicket(booking)}
+                      className="text-[10px] font-bold text-rose-400 uppercase tracking-widest hover:text-rose-300 transition-colors border border-rose-950/45 bg-rose-950/20 px-4 py-2 rounded-lg hover:bg-rose-900/20 disabled:opacity-50"
+                    >
+                      {cancellingId === booking.id ? "Cancelling..." : "Cancel Ticket"}
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           ))}

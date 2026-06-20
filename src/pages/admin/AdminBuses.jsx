@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Bus, Search, Plus, Edit, Trash2, IndianRupee, MapPin, Calendar, Clock, Loader2, ArrowRight, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Bus, Search, Plus, Edit, Trash2, Loader2, ArrowRight, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+
+const PAGE_SIZE = 20;
 
 const AdminBuses = () => {
   const [buses, setBuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingBus, setEditingBus] = useState(null);
   const [formData, setFormData] = useState({
     busName: '',
     type: 'AC Seater',
@@ -24,21 +30,89 @@ const AdminBuses = () => {
     features: []
   });
 
-  useEffect(() => {
-    fetchBuses();
-  }, []);
+  const handleEditClick = (bus) => {
+    setEditingBus(bus);
+    setFormData({
+      busName: bus.busName,
+      type: bus.type,
+      from: bus.from,
+      to: bus.to,
+      departureTime: bus.departureTime,
+      arrivalTime: bus.arrivalTime,
+      duration: bus.duration,
+      price: String(bus.price),
+      availableSeats: String(bus.availableSeats),
+      totalSeats: String(bus.totalSeats),
+      date: bus.date ? new Date(bus.date).toISOString().slice(0, 10) : '',
+      features: bus.features || []
+    });
+    setShowModal(true);
+  };
 
-  const fetchBuses = async () => {
+  const handleAddClick = () => {
+    setEditingBus(null);
+    setFormData({
+      busName: '',
+      type: 'AC Seater',
+      from: '',
+      to: '',
+      departureTime: '',
+      arrivalTime: '',
+      duration: '',
+      price: '',
+      availableSeats: '40',
+      totalSeats: '40',
+      date: '',
+      features: []
+    });
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingBus(null);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch((prev) => {
+        const next = searchTerm.trim();
+        if (prev !== next) {
+          setPage(1);
+        }
+        return next;
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const fetchBuses = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await api.get('/trips');
-      setBuses(response.data);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+      if (debouncedSearch) {
+        params.set('search', debouncedSearch);
+      }
+
+      const response = await api.get(`/admin/trips?${params.toString()}`);
+      setBuses(response.data.data || []);
+      setPagination(response.data.pagination || { page, limit: PAGE_SIZE, total: 0, pages: 1 });
     } catch (error) {
       console.error('Error fetching buses:', error);
       toast.error('Failed to load buses');
+      setBuses([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    fetchBuses();
+  }, [fetchBuses]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -63,7 +137,8 @@ const AdminBuses = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.post('/trips', {
+      let response;
+      const payload = {
         busName: formData.busName,
         type: formData.type,
         from: formData.from,
@@ -76,11 +151,18 @@ const AdminBuses = () => {
         totalSeats: parseInt(formData.totalSeats),
         date: new Date(formData.date),
         features: formData.features
-      });
+      };
+
+      if (editingBus) {
+        response = await api.put(`/trips/${editingBus._id}`, payload);
+      } else {
+        response = await api.post('/trips', payload);
+      }
 
       if (response.data.success) {
-        toast.success('Bus trip added successfully!');
+        toast.success(editingBus ? 'Bus trip updated successfully!' : 'Bus trip added successfully!');
         setShowModal(false);
+        setEditingBus(null);
         setFormData({
           busName: '',
           type: 'AC Seater',
@@ -96,10 +178,13 @@ const AdminBuses = () => {
           features: []
         });
         fetchBuses();
+        if (!editingBus) {
+          setPage(1);
+        }
       }
     } catch (error) {
-      console.error('Error adding bus:', error);
-      const errMsg = error.response?.data?.message || 'Failed to add bus trip';
+      console.error('Error saving bus:', error);
+      const errMsg = error.response?.data?.message || 'Failed to save bus trip';
       toast.error(errMsg);
     } finally {
       setSubmitting(false);
@@ -119,12 +204,6 @@ const AdminBuses = () => {
     }
   };
 
-  const filteredBuses = buses.filter(bus => 
-    bus.busName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bus.from?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bus.to?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex justify-between items-center">
@@ -133,7 +212,7 @@ const AdminBuses = () => {
           <p className="text-slate-500 text-sm">Manage routes and schedules</p>
         </div>
         <button 
-          onClick={() => setShowModal(true)}
+          onClick={handleAddClick}
           className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-all shadow-sm"
         >
           <Plus size={16} />
@@ -160,7 +239,8 @@ const AdminBuses = () => {
             <Loader2 className="animate-spin text-indigo-500" size={32} />
             <p className="text-sm font-medium">Loading fleet...</p>
           </div>
-        ) : filteredBuses.length > 0 ? (
+        ) : buses.length > 0 ? (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -175,7 +255,7 @@ const AdminBuses = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredBuses.map((bus) => (
+                {buses.map((bus) => (
                   <tr key={bus._id} className="hover:bg-slate-50/30 transition-all group">
                     <td className="px-4 py-3">
                       <p className="text-sm font-bold text-slate-800">{bus.busName}</p>
@@ -203,8 +283,11 @@ const AdminBuses = () => {
                       <p className="text-[10px] text-emerald-600 font-bold">{bus.availableSeats}/{bus.totalSeats}</p>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button className="p-1.5 hover:bg-slate-100 rounded text-slate-500 transition-all">
+                      <div className="flex justify-end gap-1">
+                        <button 
+                          onClick={() => handleEditClick(bus)}
+                          className="p-1.5 hover:bg-slate-100 rounded text-slate-500 hover:text-indigo-600 transition-all"
+                        >
                           <Edit size={14} />
                         </button>
                         <button 
@@ -220,10 +303,40 @@ const AdminBuses = () => {
               </tbody>
             </table>
           </div>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50/50">
+            <p className="text-xs text-slate-500">
+              Showing {pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1}
+              –{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} trips
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page <= 1 || loading}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-slate-300 rounded disabled:opacity-40 hover:bg-white transition-all"
+              >
+                <ChevronLeft size={14} />
+                Previous
+              </button>
+              <span className="text-xs text-slate-500 font-medium">
+                Page {pagination.page} of {pagination.pages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(pagination.pages, prev + 1))}
+                disabled={page >= pagination.pages || loading}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-slate-300 rounded disabled:opacity-40 hover:bg-white transition-all"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <Bus size={32} className="mb-2 opacity-20" />
-            <p className="text-sm font-medium">No buses found.</p>
+            <p className="text-sm font-medium">{debouncedSearch ? 'No buses match your search.' : 'No buses found.'}</p>
           </div>
         )}
       </div>
@@ -234,9 +347,9 @@ const AdminBuses = () => {
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-slate-900">Add New Bus Trip</h2>
+              <h2 className="text-lg font-bold text-slate-900">{editingBus ? 'Edit Bus Trip' : 'Add New Bus Trip'}</h2>
               <button 
-                onClick={() => setShowModal(false)}
+                onClick={handleCloseModal}
                 className="p-1 hover:bg-slate-100 rounded text-slate-500 transition-all"
               >
                 <X size={20} />
@@ -308,10 +421,16 @@ const AdminBuses = () => {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all">Cancel</button>
+                <button type="button" onClick={handleCloseModal} className="px-4 py-2 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all">Cancel</button>
                 <button type="submit" disabled={submitting} className="px-4 py-2 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2">
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  {submitting ? 'Adding...' : 'Add Bus'}
+                  {submitting ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : editingBus ? (
+                    <Edit size={16} />
+                  ) : (
+                    <Plus size={16} />
+                  )}
+                  {submitting ? (editingBus ? 'Saving...' : 'Adding...') : (editingBus ? 'Save Changes' : 'Add Bus')}
                 </button>
               </div>
             </form>

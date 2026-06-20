@@ -13,6 +13,7 @@
     "axios": "^1.15.2",
     "crypto-js": "^4.2.0",
     "framer-motion": "^12.38.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.8.0",
     "mongodb": "^7.2.0",
     "react": "^19.2.5",

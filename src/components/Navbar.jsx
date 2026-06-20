@@ -19,6 +19,8 @@ export default function Navbar({ showBack = false, backPath = "-1" }) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
+    // Signal BookingContext to clear in-memory bookings for the departing user
+    window.dispatchEvent(new Event("buskaro-auth-change"));
     toast.success("Logged out successfully");
     navigate("/");
   };
@@ -71,11 +73,17 @@ export default function Navbar({ showBack = false, backPath = "-1" }) {
             My Bookings
           </Link>
           {/* <Link
+            to="/operator"
+            className="text-[13px] text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg hover:bg-indigo-100 transition-all font-bold"
+          >
+            Operator
+          </Link> */}
+          <Link
             to="/admin"
             className="text-[13px] text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg hover:bg-emerald-100 transition-all font-bold"
           >
             Admin
-          </Link> */}
+          </Link>
         </div>
 
         {/* Auth Buttons / Profile */}
@@ -130,6 +138,7 @@ export default function Navbar({ showBack = false, backPath = "-1" }) {
             { label: "Home", path: "/" },
             { label: "Schedules", path: "/trips" },
             { label: "My Bookings", path: "/my-bookings" },
+            { label: "Operator Portal", path: "/operator" },
             { label: "Admin Panel", path: "/admin" },
           ].map((item) => (
             <Link

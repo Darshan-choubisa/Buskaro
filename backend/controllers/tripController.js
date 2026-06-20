@@ -115,3 +115,44 @@ exports.deleteTrip = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Update a trip
+// @route   PUT /api/trips/:id
+// @access  Private/Admin
+exports.updateTrip = async (req, res) => {
+  try {
+    const { busName, type, from, to, departureTime, arrivalTime, duration, price, availableSeats, totalSeats, date, features } = req.body;
+
+    const trip = await Trip.findById(req.params.id);
+
+    if (trip) {
+      trip.busName = busName || trip.busName;
+      trip.type = type || trip.type;
+      trip.from = from || trip.from;
+      trip.to = to || trip.to;
+      trip.departureTime = departureTime || trip.departureTime;
+      trip.arrivalTime = arrivalTime || trip.arrivalTime;
+      trip.duration = duration || trip.duration;
+      trip.price = price !== undefined ? price : trip.price;
+      trip.totalSeats = totalSeats !== undefined ? totalSeats : trip.totalSeats;
+      trip.availableSeats = availableSeats !== undefined ? availableSeats : trip.availableSeats;
+      trip.date = date ? new Date(date) : trip.date;
+      trip.features = features || trip.features;
+
+      const updatedTrip = await trip.save();
+      res.json({
+        success: true,
+        message: 'Trip updated successfully',
+        data: updatedTrip
+      });
+    } else {
+      res.status(404).json({ message: 'Trip not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
+  }
+};
+
