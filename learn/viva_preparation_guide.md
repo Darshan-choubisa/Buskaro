@@ -29,34 +29,37 @@ Here is how you navigate the examiner through the code connection for key featur
     *   User inputs their email and password.
     *   To prevent sending plain text passwords across the network, we encrypt the password on the client-side using `CryptoJS.AES` encryption.
     *   We send a POST request to `/api/auth/login`.
-2.  **Backend Controller**: [backend/controllers/authController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/authController.js#L61)
+2.  **Backend Route File**: [backend/routes/authRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/authRoutes.js#L7) (maps `/login` endpoint to the login controller)
+3.  **Backend Controller**: [backend/controllers/authController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/authController.js#L61)
     *   The `login` function receives the request.
     *   It decrypts the password (Line 64) and looks up the user in MongoDB.
     *   If correct, it generates a JWT token (Line 78) and sends it back to the React app.
-3.  **Frontend Success**: The React app saves the token and user details to `localStorage` and navigates to the bookings/search page.
+4.  **Frontend Success**: The React app saves the token and user details to `localStorage` and navigates to the bookings/search page.
 
 ### Flow B: Ticket Booking & Payment
 1.  **Frontend**: [src/pages/Payment.jsx](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/src/pages/Payment.jsx#L209)
     *   We send a POST request to `/api/bookings` with the selected trip ID, seats, and total amount.
-2.  **Backend Controller**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L23)
+2.  **Backend Route File**: [backend/routes/bookingRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/bookingRoutes.js#L6) (maps `/` to the create booking controller)
+3.  **Backend Controller**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L23)
     *   `createBooking` is called. It creates a booking in MongoDB with a status of `pending`.
     *   It initiates a payment order using **Razorpay SDK** (Line 85). If we are running in a local demo/test environment, it falls back to a sandbox/demo order ID (Line 114).
-3.  **Frontend Verification**:
+4.  **Frontend Verification**:
     *   The user pays via Razorpay (or simulates success in Sandbox Mode).
     *   The React app calls POST `/api/bookings/verify` (Line 258 or 434 of `Payment.jsx`).
-    *   The backend's `verifyPayment` in `bookingController.js` (Line 139) confirms the signature, changes the booking status to `confirmed`, decreases available seats on the trip, and returns a success response.
+    *   Backend route file [backend/routes/bookingRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/bookingRoutes.js#L7) maps `/verify` to backend's `verifyPayment` in `bookingController.js` (Line 139), which confirms the signature, changes the booking status to `confirmed`, decreases available seats on the trip, and returns a success response.
     *   The React app calls `addBooking(...)` in `BookingContext.jsx` to update the state and navigates to `/my-bookings`.
 
 ### Flow C: Ticket Cancellation & Refund
 1.  **Frontend**: [src/pages/CancelTicket.jsx](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/src/pages/CancelTicket.jsx#L104)
     *   User selects a reason and clicks "Confirm Cancellation".
     *   We call PUT `/api/bookings/:bookingId/cancel`.
-2.  **Backend Controller**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L303)
+2.  **Backend Route File**: [backend/routes/bookingRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/bookingRoutes.js#L11) (maps `/:id/cancel` endpoint to the cancel controller)
+3.  **Backend Controller**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L303)
     *   `cancelBooking` is called.
     *   It calculates the refund percentage based on how many days before departure the booking is cancelled (using backend policy logic).
     *   It creates a `Refund` record in MongoDB (Line 360) with a status of `pending` for Admin approval.
     *   It updates the booking status to `cancelled` and restores the seats back to the trip.
-3.  **Frontend Success**: The React app updates context via `cancelBookingInContext` and navigates to [src/pages/CancellationSuccess.jsx](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/src/pages/CancellationSuccess.jsx).
+4.  **Frontend Success**: The React app updates context via `cancelBookingInContext` and navigates to [src/pages/CancellationSuccess.jsx](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/src/pages/CancellationSuccess.jsx).
 
 ---
 
@@ -77,10 +80,12 @@ If they ask "Why did you use X instead of Y?", use these simple answers:
 
 ## 4. API Endpoints: Requests & Outputs
 
-Here is what the API looks like during testing.
+Here is what the API looks like during testing, along with the backend files where the code is defined.
 
 ### Test Case 1: Create a Booking
 *   **Endpoint**: `POST /api/bookings`
+*   **Route File**: [backend/routes/bookingRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/bookingRoutes.js#L6) (maps the route `/` to the controller)
+*   **Controller File**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L23) (contains the logic to check seats, insert into DB, and generate a Razorpay order)
 *   **Request Payload**:
     ```json
     {
@@ -116,7 +121,9 @@ Here is what the API looks like during testing.
     ```
 
 ### Test Case 2: Cancel a Booking
-*   **Endpoint**: `PUT /api/bookings/64b0f9c2d3e4f5a6b7c8d9e0/cancel`
+*   **Endpoint**: `PUT /api/bookings/:bookingId/cancel`
+*   **Route File**: [backend/routes/bookingRoutes.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/routes/bookingRoutes.js#L11) (maps `/id/cancel` to the controller)
+*   **Controller File**: [backend/controllers/bookingController.js](file:///c:/Users/Darshan/Desktop/Inst/travel%20(1)/travel/backend/controllers/bookingController.js#L303) (contains logic to update booking status, insert Refund document, and free seats on Trip)
 *   **Request Payload**:
     ```json
     {
